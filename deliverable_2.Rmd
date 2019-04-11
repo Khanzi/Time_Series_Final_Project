@@ -1,0 +1,327 @@
+---
+title: "Forecasting Employment in Daytona-Deltona Florida"
+author: "Kahlil Wehmeyer"
+date: "3/18/2019"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+    toc_float: true
+
+---
+
+\section*{Abstract}
+*The purpose of this porject is to forecast the March non seasonally adjusted estimates of average hourly earnings, average weekly hours, average weekly earnings, total employment and total weekly earnings for the Deltona Daytona metropolitan statistical area*
+
+\newpage
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+setwd("~/Advanced Topics 1/Project")
+
+```
+
+```{r libraries, include=FALSE}
+#Libraries
+library(tidyverse); theme_set(theme_minimal())
+library(tm)
+library(lubridate)
+library(forecast)
+library(knitr)
+library(pander)
+library(magrittr)
+library(plotly)
+library(forecast)
+library(patchwork)
+library(GGally)
+```
+
+# Introduction
+
+We will be predicting Average Hourly Earnings, Average Weekly Hours and Total Employment.
+
+From there we can calculate average weekly earnings as such:
+
+$$Average Weekly Earnings = Average Weekly Earning \times Average Weekly Hours$$
+Total weekly earnings will be calculated as such:
+
+$$Total Weekly Earnings = Total Employment \times Average Weekly Earnings$$
+
+
+## Data
+
+The data we will be using is sourced from multiple CSVs downloaded from the FRED.ORG website.
+
+- All Employees Federal Government
+- All Employees Health Care
+- All Employees Local Government
+- All Employees Retail Trade
+- All Employees Total Private
+- Average Weekly Earnings All Private
+- Average Weekly Hours All Private
+
+# Data
+
+Here we will import all the data and rename the variables to something more useful. Initaily columns have names starting with `SMU` that are followed by a 15 digit number.
+
+```{r import and rename, echo=FALSE, message=FALSE, warning=FALSE}
+MSA <- read_csv("All_Employees-Federal_Gov.csv") %>% rename(Federal_Employees = SMU12196609091000001) 
+MSA %<>% left_join(read_csv("All_Employees-Health_Care-Hospitals.csv"))
+MSA %<>% rename(Healthcare_Employees = SMU12196606562200001)
+MSA %<>% left_join(read_csv("All_Employees-Local_Gov.csv"))
+MSA %<>% rename(Local_Gov_Employees = SMU12196609093000001)
+MSA %<>% left_join(read_csv("All_Employees-Retail_Trade.csv")) 
+MSA %<>% rename(Retail_Employees = SMU12196604200000001) 
+MSA %<>% left_join(read_csv("All_Employees-Total_Private.csv"))
+MSA %<>% rename(All_Employees = SMU12196600500000001)
+MSA %<>% left_join(read_csv("Average_Weekly_Hours_All_Employees-Total_Private.csv"))
+MSA %<>% rename(Average_Weekly_Hours = SMU12196600500000002) 
+MSA %<>% left_join(read_csv("Average_Hourly_Earnings_All_Employees-Total_Private.csv"))
+MSA %<>% rename(Average_Hourly_Earnings = SMU12196600500000003)
+
+tail(MSA) #%>% kable()
+
+```
+
+Now we can apply the previously mentioned calculations to get Average Weekly Earnings and Total Weekly Earnings.
+
+```{r calculations, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %<>% mutate(Average_Weekly_Earnings = Average_Hourly_Earnings * Average_Weekly_Hours)
+MSA %<>% mutate(Total_Weekly_Earnings = Average_Weekly_Earnings * All_Employees)
+
+tail(MSA) #%>% kable()
+```
+
+## Summary Statistics
+
+```{r summary statistics, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% summary() #%>% pander()
+```
+
+## Time Series Lines
+
+
+```{r TS FE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Federal_Employees), color = "purple") +
+  labs(title = "Federal Employment", caption = "Source: https://fred.stlouisfed.org/")
+```
+
+```{r TS HE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Healthcare_Employees), color = "purple") +
+  theme_minimal()+
+  labs(title = "Healthcare Employment", caption = "Source: https://fred.stlouisfed.org/")
+```
+
+```{r TS LGE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Local_Gov_Employees), color = "purple") +
+  theme_minimal()+
+  labs(title = "Local Government Employment", caption = "Source: https://fred.stlouisfed.org/")
+```
+```{r TS RE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Retail_Employees), color = "purple") +
+  theme_minimal()+
+  labs(title = "Retail Employment", caption = "Source: https://fred.stlouisfed.org/")
+```
+```{r TS TPE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = All_Employees), color = "purple") +
+  theme_minimal()+
+  labs(title = "Total Private Employment", caption = "Source: https://fred.stlouisfed.org/")
+```
+
+```{r TS AWH, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Average_Weekly_Hours), color = "purple") +
+  theme_minimal()+
+  labs(title = "Average WeeklyHours", caption = "Source: https://fred.stlouisfed.org/")
+```
+```{r TS AHE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Average_Hourly_Earnings), color = "purple") +
+  theme_minimal()+
+  labs(title = "Average Hourly Earnings", caption = "Source: https://fred.stlouisfed.org/")
+```
+
+```{r TS AWE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Average_Weekly_Earnings), color = "purple") +
+  theme_minimal()+
+  labs(title = "Average Weekly Earnings", caption = "Source: https://fred.stlouisfed.org/")
+```
+```{r TS TWE, echo=FALSE, message=FALSE, warning=FALSE}
+MSA %>% ggplot() +
+  geom_line(aes(x = DATE, y = Total_Weekly_Earnings), color = "purple") +
+  theme_minimal()+
+  labs(title = "Total Weekly Earnings", caption = "Source: https://fred.stlouisfed.org/")
+
+```
+
+## PACS
+
+```{r PAC TWE, echo=FALSE, message=FALSE, warning=FALSE}
+ggPacf(MSA$Total_Weekly_Earnings) + theme_minimal() + labs(title = "Total Weekly Earnings")
+```
+```{r PAC AE, echo=FALSE, message=FALSE, warning=FALSE}
+ggPacf(MSA$All_Employees) + theme_minimal() + labs(title = "Total Employment")
+```
+
+
+```{r PAC AWE, echo=FALSE, message=FALSE, warning=FALSE}
+ggPacf(MSA$Average_Weekly_Earnings) + theme_minimal() + labs(title = "Average Weekly Earnings")
+```
+
+```{r PAC AHE, echo=FALSE, message=FALSE, warning=FALSE}
+ggPacf(MSA$Average_Hourly_Earnings) + theme_minimal() + labs(title = "Average Hourly Earnings")
+```
+```{r PAC AWH, echo=FALSE, message=FALSE, warning=FALSE}
+ggPacf(MSA$Average_Weekly_Hours) + theme_minimal() + labs(title = "Average Weekly Hours")
+```
+
+# Preliminary Models
+
+```{r creating time series object}
+TSA <- ts(MSA %>% filter(year(DATE) > 2006), start = 2007, frequency = 12) 
+```
+
+## Simple Models
+
+### Average Method
+
+Forecasts of all future values are equal to the mean of the historical data.
+$\hat{y}_{T+h|T} = \bar{y} = (y_{1}+\dots+y_{T})/T$
+
+```{r average method model}
+meanf(TSA[,'All_Employees'], 4)
+```
+```{r plotting meanf}
+autoplot(meanf(TSA[,'All_Employees']))
+```
+
+Doesn't look like the ideal method.
+
+### Naive Method
+
+All forecasts are set to the value of the last observation.
+$\hat{y}_{T+h|T} = y_{T}$
+
+```{r naive method model}
+naive(TSA[,'All_Employees'], 4)
+```
+```{r plotting naive}
+autoplot(naive(TSA[,'All_Employees'], 4)) #%>% ggplotly()
+```
+
+This looks more reasonable but the forecast doesn't change no matter how many period we go out.
+
+### Seasonal Naive Method
+
+A similar method is useful for highly seasonal data. Here we set each foecast to be the equal to the last observed value from the same season of the year.
+$\hat{y}_{T+h|T} = y_{T+h-m(k+1)},$
+
+```{r seasonal naive model}
+snaive(TSA[,'All_Employees'], 4)
+```
+```{r plotting snaive}
+autoplot(naive(TSA[,'All_Employees'], 4)) #%>% ggplotly()
+```
+
+This is a very marginal improvement with the forecasts only differing by decimals.
+
+### Drift Method
+
+This is a variation on the naive method which allows the forecast to increase or decrease over time. The amount of change, drift, is set to be the average change seen in the historical data.
+$\hat{y}_{T+h|T} = y_{T} + \frac{h}{T-1}\sum_{t=2}^T (y_{t}-y_{t-1}) = y_{T} + h \left( \frac{y_{T} -y_{1}}{T-1}\right)$
+
+```{r snaive with drift model}
+rwf(TSA[,'All_Employees'], 4, drift=TRUE)
+```
+```{r plotting snaive w/ drift}
+autoplot(rwf(TSA[,'All_Employees'], 4, drift=TRUE)) #%>% ggplotly()
+```
+
+Another marginal improvement.
+
+# Linear Models
+
+## Pure Auto Regressive
+
+### ARIMA AWH Model A1
+
+```{r}
+AR_AWH_A1 <- Arima(na.omit(TSA[,"Average_Weekly_Hours"]), order= c(0,2,12), include.drift = TRUE)
+AR_AWH_A1 %>% summary()
+AR_AWH_A1 %>% forecast(h=4) %>% autoplot() + ggtitle("4 Period Forecast for Average Weekly Hours (A1)")
+AR_AWH_A1 %>% checkresiduals()
+```
+
+This model seems to do well however it still has serial correlation. However the ACF and the residuals are nicely distributed. It is modeled as an AR(1) order model with 1st differencing. A better model is out there.
+
+### ARIMA AWH Model A2
+```{r}
+AR_AWH_A2 <- auto.arima(na.omit(TSA[,"Average_Weekly_Hours"]))
+AR_AWH_A2 %>% summary()
+AR_AWH_A2 %>% forecast(h=4) %>% autoplot() + ggtitle("4 Period Forecast for Average Weekly Hours (A1)")
+AR_AWH_A2 %>% checkresiduals()
+```
+
+
+### AR AWE Model B1
+```{r}
+AR_AHE_B1 <- Arima(na.omit(TSA[,"Average_Hourly_Earnings"]), order= c(0,2,12))
+AR_AHE_B1 %>% summary()
+AR_AHE_B1 %>% forecast(h=4) %>% autoplot() + ggtitle("4 Period Forecast for Average Hourly Earnings (B1)")
+AR_AHE_B1 %>% checkresiduals()
+```
+
+This model performs pretty well but there is still serial correlation. The distribution of the  residuals are close to normal. The plot of the residuals doesn't quite look like white noise and therefore there is still information that can be extrapolated from the data. You can tell by the cyclical nature of the residuals over time. Improvements can be made
+
+### AR AHE Model B2
+```{r}
+AR_AHE_B2 <- auto.arima(na.omit(TSA[,"Average_Hourly_Earnings"]))
+AR_AHE_B2 %>% summary()
+AR_AHE_B2 %>% forecast(h=4) %>% autoplot() + ggtitle("4 Period Forecast for Average Hourly Earnings (B2)")
+AR_AHE_B2 %>% checkresiduals()
+```
+
+
+### AR TE Model C1
+
+```{r}
+AR_TE_C1 <- Arima(na.omit(TSA[,"Average_Hourly_Earnings"]), order= c(0,2,12), include.drift = TRUE)
+AR_TE_C1 %>% summary()
+AR_TE_C1 %>% forecast(h=4) %>% autoplot() + ggtitle("4 Period Forecast for Total Employment (C1)")
+AR_TE_C1 %>% checkresiduals()
+```
+
+
+# Checkpoint 2 Disclaimer
+
+Hello Dr. Dewey, 
+
+If it isn't already apparent I've elected to try my best to complete this project in R. I've been reading a couple supplementary textbooks and hope to meet your standards. I know that there isn't a plethora of suitable models in this document and hopefully interpretting the results isn't too cryptic for you. I know Owen is also going to be attempting to do this in R and as I've mentioned previously we will be helping each other. 
+
+## Biggest Challenges
+
+- Lags: Using lags in R is a little different from STATA because you can either use a lagging function or create a new variable. Encorporating this into a model is something I haven't quite decyphered
+- Cross Validation: This isn't a huge challenge since these is a lot of functions in R that performs cross validation in R. But I have yet to test and implement them
+- Rolling Window: I have a couple packages that I'm reading the documentation for. One of them has a `roll_lm` package for doing linear modeling. Yet to test this and hopefully it achieves something similar to your STATA code.
+
+## Things to be completed
+
+* More rigorous model selection and evaluation
+  * Rolling Window
+  * GSREG
+  * Cross Validation
+* Proper forecasting 
+  * Once model is selected and validated
+  * Make forecast and plots
+
